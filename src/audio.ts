@@ -7,7 +7,7 @@ export type SeName = 'click' | 'pop' | 'sparkle' | 'oops' | 'correct' | 'miss' |
 
 const BGM_FILE: Record<BgmName, string> = {
   title: 'bgm-title.mp3',   // 8bit29 子猫のもんたのクッキー屋さん
-  home: 'bgm-home.mp3',     // 8bit24 ZinniA ファミコン版
+  home: 'bgm-home.mp3',     // 8bit01 たびだちのむら
   battle: 'bgm-battle.mp3', // 8bit14 サターンエビマン
   final: 'bgm-final.mp3',   // 8bit18 しゅくめいのたたかい
   story: 'bgm-story.mp3',   // 8bit03 くじけぬもの
