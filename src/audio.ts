@@ -25,8 +25,8 @@ const SE_FILE: Record<SeName, string> = {
   menu: 'se-menu.mp3',       // レトロ04 メニュー音
 };
 
-const BGM_VOL = 0.35;
-const SE_VOL = 0.7;
+const BGM_VOL = 0.25;
+const SE_VOL = 0.5;
 const KEY = 'manzai-rpg-sound';
 
 let ctx: AudioContext | null = null;
