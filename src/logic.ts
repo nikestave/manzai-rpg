@@ -48,7 +48,7 @@ export function newGame(comboId: string): GameState {
     stats: { ...c.stats },
     stamina: 100,
     money: 100000,
-    popularity: c.startYear * 2,
+    popularity: 2,
     actionUses: {},
     deck: [...c.deck],
     alive: true,
@@ -231,17 +231,29 @@ export function yearResultLabel(s: GameState): string {
   return RESULT_ORDER[s.round];
 }
 
-// ---------- セーブ ----------
-const KEY = 'manzai-rpg-save-v1';
-export function save(s: GameState) {
-  try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* ignore */ }
+// ---------- セーブ（3スロット） ----------
+export const SLOTS = [1, 2, 3];
+const OLD_KEY = 'manzai-rpg-save-v1';
+const slotKey = (n: number) => `manzai-rpg-slot-${n}`;
+
+export function saveSlot(n: number, s: GameState) {
+  s.savedAt = Date.now();
+  try { localStorage.setItem(slotKey(n), JSON.stringify(s)); } catch { /* ignore */ }
 }
-export function load(): GameState | null {
+export function loadSlot(n: number): GameState | null {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(slotKey(n));
     return raw ? (JSON.parse(raw) as GameState) : null;
   } catch { return null; }
 }
-export function clearSave() {
-  try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+export function deleteSlot(n: number) {
+  try { localStorage.removeItem(slotKey(n)); } catch { /* ignore */ }
+}
+/** v0.1 の自動セーブをスロット1へ移す */
+export function migrateOldSave() {
+  try {
+    const raw = localStorage.getItem(OLD_KEY);
+    if (raw && !localStorage.getItem(slotKey(1))) localStorage.setItem(slotKey(1), raw);
+    localStorage.removeItem(OLD_KEY);
+  } catch { /* ignore */ }
 }

@@ -1,6 +1,6 @@
 // オフラインでも遊べるようにするService Worker
 // ページ本体はネットワーク優先（更新をすぐ反映）、それ以外はキャッシュ優先
-const CACHE = 'manzai-rpg-v1';
+const CACHE = 'manzai-rpg-v2';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => {

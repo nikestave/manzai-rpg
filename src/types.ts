@@ -81,4 +81,5 @@ export interface GameState {
   flags: Record<string, number>;
   buff?: { action: ActionId; mult: number };
   champion?: boolean;
+  savedAt?: number;
 }

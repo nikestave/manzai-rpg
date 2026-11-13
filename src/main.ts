@@ -5,18 +5,22 @@ import { COMBOS, JUDGES, RIVALS, comboById } from './data/combos';
 import { CARDS, TYPE_LABEL } from './data/cards';
 import { EVENTS, KAISAN, type GameEvent } from './data/events';
 import {
-  ACTIONS, LAST_YEAR, ROUNDS, TURNS_PER_YEAR, actionLevel, clearSave, currentRound, doAction, failRate,
-  load, newGame, nextRoundInfo, payLiving, pick, rand, rank, recordResult, save, turnLabel, yearResultLabel, yen,
+  ACTIONS, LAST_YEAR, ROUNDS, TURNS_PER_YEAR, actionLevel, currentRound, SLOTS, saveSlot, loadSlot, deleteSlot, migrateOldSave, doAction, failRate,
+  newGame, nextRoundInfo, payLiving, pick, rand, rank, recordResult, turnLabel, yearResultLabel, yen,
   addCard,
 } from './logic';
 import { PHASES, cardScore, drawHand, judgeScores, netaBonus, reaction, rivalScore, stars, type BattleCtx } from './battle';
 import { drawMic, drawPerson } from './sprites';
+import { NPC, SCENES, type Scene, type Speaker } from './data/story';
 
 const app = document.getElementById('app')!;
 let S: GameState;
 let busy = false;
 /** 1手戻す用のスナップショット（大会・年越しを挟んだら消える） */
 let undoSnap: string | null = null;
+/** いま遊んでいるセーブスロット */
+let slot = 1;
+const save = (s: GameState) => saveSlot(slot, s);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const br = (t: string) => t.replace(/\n/g, '<br>');
@@ -72,15 +76,94 @@ function say(st: HTMLElement, speaker: 'B' | 'T', text: string) {
   st.querySelector(speaker === 'B' ? '.who.b' : '.who.t')!.classList.add('talk');
 }
 
+// ---------------- セーブスロット ----------------
+function slotLabel(n: number): string {
+  const d = loadSlot(n);
+  if (!d) return `<span class="slot">スロット${n}<small>（空き）</small></span>`;
+  const at = d.savedAt ? new Date(d.savedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+  return `<span class="slot">スロット${n}${n === slot && S ? ' ▶' : ''}<b>${comboById(d.comboId).name}</b><small>結成${d.year}年目 ${turnLabel(d.turn)}　${at}</small></span>`;
+}
+async function pickSlot(title: string, onlyFilled = false): Promise<number | null> {
+  const nums = onlyFilled ? SLOTS.filter((n) => loadSlot(n)) : SLOTS;
+  const i = await modal(title, '', [...nums.map(slotLabel), 'もどる']);
+  return i < nums.length ? nums[i] : null;
+}
+function toast(text: string) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = text;
+  document.body.append(el);
+  setTimeout(() => el.remove(), 1800);
+}
+
+// ---------------- ストーリー ----------------
+function fill(t: string): string {
+  const c = comboById(S.comboId);
+  return t.replace(/\{B\}/g, c.boke.name).replace(/\{T\}/g, c.tsukkomi.name).replace(/\{C\}/g, c.name);
+}
+function speakerInfo(sp: Speaker): { name: string; look?: import('./types').Look } {
+  const c = comboById(S.comboId);
+  if (sp === 'B') return { name: c.boke.name, look: c.boke.look };
+  if (sp === 'T') return { name: c.tsukkomi.name, look: c.tsukkomi.look };
+  if (sp === 'N') return { name: '' };
+  return NPC[sp];
+}
+
+function playScene(sc: Scene): Promise<void> {
+  return new Promise((res) => {
+    const el = document.createElement('div');
+    el.className = 'scene';
+    el.innerHTML = `<div class="scene-inner">
+      <div class="scene-title">${sc.title}</div>
+      <div class="scene-stage"></div>
+      <div class="win msgbox"><div class="portrait"></div><div class="mb"><div class="spk"></div><div class="txt"></div></div><div class="nx">▼</div></div>
+      <div class="scene-foot"><span>タップで次へ</span><button class="btn sm skip">スキップ ≫</button></div>
+    </div>`;
+    const st = stage(S.comboId, { scale: 4 });
+    el.querySelector('.scene-stage')!.append(st);
+    const portrait = el.querySelector<HTMLElement>('.portrait')!;
+    const spk = el.querySelector<HTMLElement>('.spk')!;
+    const txt = el.querySelector<HTMLElement>('.txt')!;
+    const box = el.querySelector<HTMLElement>('.msgbox')!;
+    let i = 0;
+    const end = () => { el.remove(); res(); };
+    const next = () => {
+      if (i >= sc.lines.length) return end();
+      const [sp, raw] = sc.lines[i++];
+      const info = speakerInfo(sp);
+      portrait.innerHTML = '';
+      if (info.look) portrait.append(drawPerson(info.look, 3));
+      else if (sp !== 'N') portrait.textContent = '📞';
+      box.classList.toggle('narr', sp === 'N');
+      spk.textContent = info.name;
+      txt.innerHTML = br(fill(raw));
+      st.querySelectorAll('.who').forEach((w) => w.classList.remove('talk'));
+      if (sp === 'B' || sp === 'T') st.querySelector(sp === 'B' ? '.who.b' : '.who.t')!.classList.add('talk');
+    };
+    el.addEventListener('click', next);
+    el.querySelector('.skip')!.addEventListener('click', (e) => { e.stopPropagation(); end(); });
+    document.body.append(el);
+    next();
+  });
+}
+
+async function checkStory(trigger: Scene['trigger']) {
+  for (const sc of SCENES) {
+    if (sc.trigger !== trigger || S.flags['story_' + sc.id] || !sc.cond(S)) continue;
+    S.flags['story_' + sc.id] = 1;
+    await playScene(sc);
+  }
+}
+
 // ---------------- タイトル ----------------
 function renderTitle() {
-  const saved = load();
+  const anySave = SLOTS.some((n) => loadSlot(n));
   app.innerHTML = `<div class="screen title">
     <div class="logo"><div class="sub">ドット漫才</div><h1>目指せ<br><span>笑王</span>グランプリ</h1></div>
     <div class="title-stage"></div>
     <div class="menu">
       <button class="btn big" id="new">はじめから</button>
-      ${saved ? `<button class="btn big" id="cont">つづきから<small>${comboById(saved.comboId).name}・結成${saved.year}年目 ${turnLabel(saved.turn)}</small></button>` : ''}
+      ${anySave ? '<button class="btn big" id="cont">つづきから</button>' : ''}
     </div>
     <div class="sub-menu">
       ${isStandalone() ? '' : '<button class="btn sm" id="install">📱 ホームに追加</button>'}
@@ -98,12 +181,22 @@ function renderTitle() {
     ts.append(w);
   });
   app.querySelector('#new')!.addEventListener('click', async () => {
-    if (saved && (await modal('', '今のセーブデータは消えます。<br>はじめからにしますか？', ['はじめから', 'やめる'])) !== 0) return;
+    const n = await pickSlot('どのスロットで始めますか？');
+    if (n === null) return;
+    if (loadSlot(n) && (await modal('', `スロット${n}のデータは上書きされます。<br>よろしいですか？`, ['はじめから', 'やめる'])) !== 0) return;
+    slot = n;
     renderSelect();
   });
   app.querySelector('#install')?.addEventListener('click', showInstall);
   app.querySelector('#share')!.addEventListener('click', share);
-  app.querySelector('#cont')?.addEventListener('click', () => { S = saved!; undoSnap = null; renderHome(); });
+  app.querySelector('#cont')?.addEventListener('click', async () => {
+    const n = await pickSlot('どのデータで遊びますか？', true);
+    if (n === null) return;
+    S = loadSlot(n)!;
+    slot = n;
+    undoSnap = null;
+    renderHome();
+  });
 }
 
 // ---------------- コンビ選択 ----------------
@@ -119,7 +212,7 @@ function renderSelect() {
         <div class="cname">${c.name}</div>
         <div class="cstyle">${c.style}</div>
         <div class="cdesc">${c.desc}</div>
-        <div class="cmeta"><span class="diff">${c.difficulty}</span> 結成${c.startYear}年目から（残り${LAST_YEAR - c.startYear + 1}回）</div>
+        <div class="cmeta"><span class="diff">${c.difficulty}</span> 結成1〜15年目の15回挑戦</div>
       </div>`;
     card.querySelector('.sprites')!.append(drawPerson(c.boke.look, 3), drawPerson(c.tsukkomi.look, 3));
     card.addEventListener('click', async () => {
@@ -128,8 +221,9 @@ function renderSelect() {
       S = newGame(c.id);
       undoSnap = null;
       save(S);
-      await modal('', `<b>${c.name}</b> 結成${S.year}年目の春。<br><br>年に一度の漫才大会<br>「笑王グランプリ」の優勝を目指して<br>今日も劇場へ向かう――<br><br><small>予選は8月後半から。それまでに鍛えよう！</small>`, ['はじめる']);
       renderHome();
+      await checkStory('yearStart');
+      save(S);
     });
     list.append(card);
   }
@@ -165,7 +259,7 @@ function renderHome() {
           <span class="hint">${fr > 0 ? `<em>失敗${fr}%</em>` : a.hint}</span></button>`;
       }).join('')}
     </div>
-    <div class="foot"><button class="btn sm" id="undo" ${undoSnap ? '' : 'disabled'}>↩ 1手戻る</button><button class="btn sm" id="deck">📒 ネタ帳(${S.deck.length})</button><button class="btn sm" id="hist">📜 戦績</button><button class="btn sm" id="title">🏠</button></div>
+    <div class="foot"><button class="btn sm" id="undo" ${undoSnap ? '' : 'disabled'}>↩ 1手戻る</button><button class="btn sm" id="save">💾 セーブ</button><button class="btn sm" id="deck">📒 ネタ帳</button><button class="btn sm" id="hist">📜 戦績</button><button class="btn sm" id="title">🏠</button></div>
   </div>`;
   const st = stage(S.comboId, { scale: 4 });
   app.querySelector('.stage-wrap')!.append(st);
@@ -185,7 +279,21 @@ function renderHome() {
     renderHome();
   });
   app.querySelector('#hist')!.addEventListener('click', showHistory);
-  app.querySelector('#title')!.addEventListener('click', () => { save(S); renderTitle(); });
+  app.querySelector('#title')!.addEventListener('click', async () => {
+    if ((await modal('', 'タイトルに戻りますか？<br><small>（今の状態は自動でセーブされています）</small>', ['タイトルへ', 'やめる'])) !== 0) return;
+    save(S);
+    migrateOldSave();
+renderTitle();
+  });
+  app.querySelector('#save')!.addEventListener('click', async () => {
+    const n = await pickSlot('どこにセーブしますか？');
+    if (n === null) return;
+    const other = loadSlot(n);
+    if (n !== slot && other && (await modal('', `スロット${n}のデータを上書きしますか？`, ['上書きする', 'やめる'])) !== 0) return;
+    slot = n;
+    save(S);
+    toast(`スロット${n}にセーブしました`);
+  });
 }
 
 function showDeck() {
@@ -223,6 +331,7 @@ async function takeTurn(id: ActionId) {
       if (total >= round.th) {
         S.round++;
         await modal('🎉 通過！', `${round.name}を <b>${total.toFixed(1)}点</b> で突破！<br>（目標 ${round.th}点）`, ['よっしゃ！']);
+        await checkStory('afterRound');
       } else {
         S.alive = false;
         await modal('😢 敗退…', `${round.name}で敗退…<br><b>${total.toFixed(1)}点</b>（目標 ${round.th}点）<br><br>今年は残りの時間で力を蓄えよう。`, ['来年こそ…']);
@@ -288,6 +397,7 @@ async function yearEnd(): Promise<boolean> {
   S.round = 0;
   S.alive = true;
   S.stamina = 100;
+  await checkStory('yearStart');
   return false;
 }
 
@@ -445,7 +555,7 @@ function renderEnding(win: boolean) {
   app.querySelector('.stage-wrap')!.append(st);
   say(st, 'B', win ? 'ありがとうございましたー！！' : 'ありがとうございました');
   if (win) confetti();
-  clearSave();
+  deleteSlot(slot);
   app.querySelector('#again')!.addEventListener('click', renderTitle);
 }
 
