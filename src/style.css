@@ -244,3 +244,14 @@ button { font: inherit; color: inherit; }
 .msgbox.narr .txt { color: var(--dim); }
 .msgbox .nx { position: absolute; right: 10px; bottom: 4px; color: var(--gold); animation: bob .8s steps(2) infinite; }
 .scene-foot { display: flex; justify-content: space-between; align-items: center; color: var(--dim); font-size: 12px; margin-top: auto; }
+
+/* サウンド切り替え */
+.sound-toggle {
+  position: fixed; z-index: 90; right: max(10px, calc(50% - 210px)); top: max(10px, env(safe-area-inset-top));
+  width: 40px; height: 40px; border-radius: 50%; font-size: 18px; line-height: 1;
+  background: var(--win2); border: 2px solid var(--line); box-shadow: 0 2px 0 #0d0a1a; cursor: pointer;
+}
+.note a { color: var(--dim); }
+.hud { padding-right: 52px; }
+.hud.center { padding-right: 52px; padding-left: 52px; }
+.select .head { padding-right: 52px; }

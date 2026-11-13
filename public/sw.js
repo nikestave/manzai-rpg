@@ -1,6 +1,6 @@
 // オフラインでも遊べるようにするService Worker
 // ページ本体はネットワーク優先（更新をすぐ反映）、それ以外はキャッシュ優先
-const CACHE = 'manzai-rpg-v2';
+const CACHE = 'manzai-rpg-v3';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => {
@@ -14,6 +14,8 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
+  // 音声は分割取得（Range）されるのでキャッシュせずブラウザに任せる
+  if (new URL(req.url).pathname.includes('/audio/')) return;
   if (req.mode === 'navigate') {
     e.respondWith(
       fetch(req)

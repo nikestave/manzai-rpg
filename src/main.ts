@@ -11,6 +11,7 @@ import {
 } from './logic';
 import { PHASES, cardScore, drawHand, judgeScores, netaBonus, reaction, rivalScore, stars, type BattleCtx } from './battle';
 import { drawMic, drawPerson } from './sprites';
+import { bgm, currentBgm, isSoundOn, se, setSound, unlockOnFirstTouch, type BgmName } from './audio';
 import { NPC, SCENES, type Scene, type Speaker } from './data/story';
 
 const app = document.getElementById('app')!;
@@ -110,6 +111,8 @@ function speakerInfo(sp: Speaker): { name: string; look?: import('./types').Look
 }
 
 function playScene(sc: Scene): Promise<void> {
+  const prevBgm: BgmName | null = currentBgm();
+  bgm('story');
   return new Promise((res) => {
     const el = document.createElement('div');
     el.className = 'scene';
@@ -126,7 +129,7 @@ function playScene(sc: Scene): Promise<void> {
     const txt = el.querySelector<HTMLElement>('.txt')!;
     const box = el.querySelector<HTMLElement>('.msgbox')!;
     let i = 0;
-    const end = () => { el.remove(); res(); };
+    const end = () => { el.remove(); if (prevBgm) bgm(prevBgm); res(); };
     const next = () => {
       if (i >= sc.lines.length) return end();
       const [sp, raw] = sc.lines[i++];
@@ -140,7 +143,7 @@ function playScene(sc: Scene): Promise<void> {
       st.querySelectorAll('.who').forEach((w) => w.classList.remove('talk'));
       if (sp === 'B' || sp === 'T') st.querySelector(sp === 'B' ? '.who.b' : '.who.t')!.classList.add('talk');
     };
-    el.addEventListener('click', next);
+    el.addEventListener('click', () => { se('menu'); next(); });
     el.querySelector('.skip')!.addEventListener('click', (e) => { e.stopPropagation(); end(); });
     document.body.append(el);
     next();
@@ -157,6 +160,7 @@ async function checkStory(trigger: Scene['trigger']) {
 
 // ---------------- タイトル ----------------
 function renderTitle() {
+  bgm('title');
   const anySave = SLOTS.some((n) => loadSlot(n));
   app.innerHTML = `<div class="screen title">
     <div class="logo"><div class="sub">ドット漫才</div><h1>目指せ<br><span>笑王</span>グランプリ</h1></div>
@@ -169,7 +173,7 @@ function renderTitle() {
       ${isStandalone() ? '' : '<button class="btn sm" id="install">📱 ホームに追加</button>'}
       <button class="btn sm" id="share">🔗 友達にシェア</button>
     </div>
-    <p class="note">※登場するコンビ・大会はすべて架空です</p>
+    <p class="note">※登場するコンビ・大会はすべて架空です<br>音楽：<a href="https://maou.audio/" target="_blank" rel="noopener">魔王魂</a></p>
   </div>`;
   const ts = app.querySelector('.title-stage')!;
   const pair = COMBOS.slice(0, 4);
@@ -231,6 +235,7 @@ function renderSelect() {
 
 // ---------------- ホーム（育成） ----------------
 function renderHome() {
+  bgm('home');
   const c = comboById(S.comboId);
   app.innerHTML = `<div class="screen home">
     <div class="win hud">
@@ -282,8 +287,7 @@ function renderHome() {
   app.querySelector('#title')!.addEventListener('click', async () => {
     if ((await modal('', 'タイトルに戻りますか？<br><small>（今の状態は自動でセーブされています）</small>', ['タイトルへ', 'やめる'])) !== 0) return;
     save(S);
-    migrateOldSave();
-renderTitle();
+    renderTitle();
   });
   app.querySelector('#save')!.addEventListener('click', async () => {
     const n = await pickSlot('どこにセーブしますか？');
@@ -321,6 +325,7 @@ async function takeTurn(id: ActionId) {
     const res = doAction(S, id);
     const lines = [...res.lines, ...payLiving(S)];
     if (res.levelUp) lines.push(`🎉 ${ACTIONS.find((a) => a.id === id)!.name}がLv${res.levelUp}に上がった！`);
+    if (res.levelUp || lines.some((l) => l.includes('新ネタ'))) se('piro');
     await modal(res.title, resultList(lines), ['OK']);
 
     const round = currentRound(S);
@@ -330,10 +335,12 @@ async function takeTurn(id: ActionId) {
       const total = await runBattle(`${round.name}`, round.th, 'prelim');
       if (total >= round.th) {
         S.round++;
+        se('correct');
         await modal('🎉 通過！', `${round.name}を <b>${total.toFixed(1)}点</b> で突破！<br>（目標 ${round.th}点）`, ['よっしゃ！']);
         await checkStory('afterRound');
       } else {
         S.alive = false;
+        se('miss');
         await modal('😢 敗退…', `${round.name}で敗退…<br><b>${total.toFixed(1)}点</b>（目標 ${round.th}点）<br><br>今年は残りの時間で力を蓄えよう。`, ['来年こそ…']);
       }
     }
@@ -367,6 +374,7 @@ async function maybeEvent() {
     if (!S.flags.ultimate && progressed >= 10 && Math.random() < 0.35) {
       S.flags.ultimate = 1;
       addCard(S, c.ultimate);
+      se('sparkle');
       await modal('✨ 覚醒イベント', `${br(c.ultimateEvent)}<br><br><b>奥義「${CARDS[c.ultimate].name}」をネタ帳に追加！</b>`, ['すごい！']);
       return;
     }
@@ -377,6 +385,7 @@ async function maybeEvent() {
     S.flags.last_ev_id = EVENTS.indexOf(ev);
   }
   S.flags['ev_' + ev.id] = (S.flags['ev_' + ev.id] ?? 0) + 1;
+  se('hatena');
   const i = await modal(`❗ ${ev.title}`, br(ev.text(S, c)), ev.choices.map((ch) => ch.label), 'event');
   const out = ev.choices[i].apply(S);
   await modal('', resultList(out), ['OK']);
@@ -420,6 +429,7 @@ function renderBattle(title: string, sub: string, gaugeMax: number, th: number |
 
 /** 4局面の漫才を行い、合計点を返す */
 async function runBattle(title: string, th: number | null, mode: 'prelim' | 'final' | 'last'): Promise<number> {
+  bgm(mode === 'prelim' ? 'battle' : 'final');
   const gaugeMax = th ? th * 1.4 : 190;
   const st = renderBattle(title, th ? `目標 ${th}点` : mode === 'last' ? '最終決戦' : '決勝 1stラウンド', gaugeMax, th);
   const gaugeEl = app.querySelector<HTMLElement>('.gauge i')!;
@@ -461,6 +471,7 @@ async function runBattle(title: string, th: number | null, mode: 'prelim' | 'fin
     react.hidden = false;
     react.className = `react ${r.cls}`;
     react.textContent = r.text;
+    se(r.cls === 'r4' ? 'sparkle' : r.cls === 'r3' ? 'pop' : r.cls === 'r1' ? 'oops' : 'click');
     total += final;
     setGauge(total);
     hand.innerHTML = `<div class="info">+${final.toFixed(1)}点</div>`;
@@ -540,6 +551,8 @@ async function runFinal() {
 
 // ---------------- エンディング ----------------
 function renderEnding(win: boolean) {
+  bgm('ending');
+  se(win ? 'sparkle' : 'correct');
   const c = comboById(S.comboId);
   app.innerHTML = `<div class="screen ending ${win ? 'win' : ''}">
     <div class="logo"><h1>${win ? '🏆 笑王 🏆' : 'ラストイヤー終了'}</h1></div>
@@ -607,4 +620,24 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 
+// ---------------- サウンド切り替え ----------------
+const soundBtn = document.createElement('button');
+soundBtn.className = 'sound-toggle';
+const paintSound = () => { soundBtn.textContent = isSoundOn() ? '🔊' : '🔇'; soundBtn.setAttribute('aria-label', isSoundOn() ? '音をOFFにする' : '音をONにする'); };
+soundBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  setSound(!isSoundOn());
+  paintSound();
+  if (isSoundOn()) { se('click'); toast('🔊 サウンド ON'); } else toast('🔇 サウンド OFF');
+});
+paintSound();
+document.body.append(soundBtn);
+unlockOnFirstTouch();
+// ボタン・カードを押したときの決定音
+document.addEventListener('click', (e) => {
+  const t = (e.target as HTMLElement).closest('.btn, .card, .combo-card');
+  if (t && !(t as HTMLButtonElement).disabled) se('click');
+}, true);
+
+migrateOldSave();
 renderTitle();

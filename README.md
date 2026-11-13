@@ -15,3 +15,6 @@ npm run build    # dist/ に静的ファイルを出力（GitHub Pages / Vercel 
 - `src/battle.ts` … 漫才バトルの点数計算
 - `src/sprites.ts` … ドット絵キャラの生成（16×20）
 - `docs/design.md` … 企画書
+
+## 音楽・効果音
+音楽：[魔王魂](https://maou.audio/)（`public/audio/`。魔王魂の利用規約に従って使用）
