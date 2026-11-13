@@ -255,3 +255,28 @@ button { font: inherit; color: inherit; }
 .hud { padding-right: 52px; }
 .hud.center { padding-right: 52px; padding-left: 52px; }
 .select .head { padding-right: 52px; }
+
+/* 最終決戦の発表 */
+.reveal { position: fixed; inset: 0; z-index: 75; background: rgba(10,6,20,.94); display: flex; justify-content: center; animation: fade .4s; }
+.reveal-inner { width: 100%; max-width: 440px; padding: max(24px, env(safe-area-inset-top)) 14px 24px; display: flex; flex-direction: column; gap: 14px; }
+.rv-title { text-align: center; color: var(--gold); font-size: 22px; letter-spacing: .15em; }
+.rv-judges { display: flex; flex-direction: column; gap: 6px; }
+.rv-j { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border: 2px solid #5b4f86; border-radius: 6px; background: var(--win); transition: all .2s; }
+.rv-j small { color: var(--dim); }
+.rv-j b { font-weight: normal; color: var(--dim); }
+.rv-j.focus { border-color: var(--gold); transform: scale(1.03); }
+.rv-j.open.mine { border-color: var(--gold); background: #4a3a10; }
+.rv-j.open.mine b { color: var(--gold); }
+.rv-j.open.other b { color: var(--ink); }
+.rv-tally { display: flex; gap: 6px; }
+.rv-tally > div { flex: 1; text-align: center; background: var(--win); border: 2px solid #5b4f86; border-radius: 6px; padding: 6px 2px; font-size: 11px; }
+.rv-tally > div.me { border-color: var(--gold); }
+.rv-tally span { display: block; min-height: 2.6em; }
+.rv-tally b { font-size: 26px; color: var(--gold); margin-right: 2px; }
+.rv-msg { text-align: center; font-size: 20px; min-height: 90px; display: flex; align-items: center; justify-content: center; }
+.rv-winner { font-size: 32px; color: var(--ink); text-shadow: 3px 3px 0 #000; animation: pop .5s ease-out; }
+.rv-winner.me { color: var(--gold); font-size: 36px; }
+.rv-next[hidden] { display: none; }
+.btn.gold { border-color: var(--gold); color: var(--gold); }
+.card-preview { width: 100%; border-radius: 4px; display: block; -webkit-user-select: auto; user-select: auto; -webkit-touch-callout: default; }
+.ending { gap: 10px; }

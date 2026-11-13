@@ -82,4 +82,6 @@ export interface GameState {
   buff?: { action: ActionId; mult: number };
   champion?: boolean;
   savedAt?: number;
+  /** 直近の決勝の記録（戦績画像用） */
+  finalInfo?: { year: number; score: number; rank: number; votes?: number; rivals: string[] };
 }

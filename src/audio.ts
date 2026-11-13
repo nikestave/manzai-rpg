@@ -118,6 +118,11 @@ export function bgm(name: BgmName) {
   void startWanted();
 }
 export const currentBgm = () => wanted;
+/** BGMを止める（溜めの演出用） */
+export function stopBgm() {
+  wanted = null;
+  stopCurrent(0.8);
+}
 
 export function se(name: SeName) {
   if (!enabled) return;

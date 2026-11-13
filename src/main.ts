@@ -11,7 +11,8 @@ import {
 } from './logic';
 import { PHASES, cardScore, drawHand, judgeScores, netaBonus, reaction, rivalScore, stars, type BattleCtx } from './battle';
 import { drawMic, drawPerson } from './sprites';
-import { bgm, currentBgm, isSoundOn, se, setSound, unlockOnFirstTouch, type BgmName } from './audio';
+import { bgm, currentBgm, isSoundOn, se, setSound, stopBgm, unlockOnFirstTouch, type BgmName } from './audio';
+import { makeRecordCard } from './recordCard';
 import { NPC, SCENES, type Scene, type Speaker } from './data/story';
 
 const app = document.getElementById('app')!;
@@ -100,7 +101,7 @@ function toast(text: string) {
 // ---------------- ストーリー ----------------
 function fill(t: string): string {
   const c = comboById(S.comboId);
-  return t.replace(/\{B\}/g, c.boke.name).replace(/\{T\}/g, c.tsukkomi.name).replace(/\{C\}/g, c.name);
+  return t.replace(/\{Y\}/g, String(S.year)).replace(/\{B\}/g, c.boke.name).replace(/\{T\}/g, c.tsukkomi.name).replace(/\{C\}/g, c.name);
 }
 function speakerInfo(sp: Speaker): { name: string; look?: import('./types').Look } {
   const c = comboById(S.comboId);
@@ -110,9 +111,9 @@ function speakerInfo(sp: Speaker): { name: string; look?: import('./types').Look
   return NPC[sp];
 }
 
-function playScene(sc: Scene): Promise<void> {
+function playScene(sc: Scene, music: BgmName = 'story'): Promise<void> {
   const prevBgm: BgmName | null = currentBgm();
-  bgm('story');
+  bgm(music);
   return new Promise((res) => {
     const el = document.createElement('div');
     el.className = 'scene';
@@ -348,7 +349,7 @@ async function takeTurn(id: ActionId) {
     S.turn++;
     if (S.turn >= TURNS_PER_YEAR) {
       if (S.alive && S.round >= ROUNDS.length) await runFinal();
-      if (S.champion) { recordResult(S, '優勝'); save(S); renderEnding(true); return; }
+      if (S.champion) { recordResult(S, '優勝'); save(S); await playLines('エピローグ　笑王', endingLines(true), 'ending'); renderEnding(true); return; }
       const ended = await yearEnd();
       if (ended) return;
     }
@@ -397,6 +398,7 @@ async function yearEnd(): Promise<boolean> {
   const c = comboById(S.comboId);
   if (S.year >= LAST_YEAR) {
     save(S);
+    await playLines('エピローグ　15年目の冬', endingLines(false));
     renderEnding(false);
     return true;
   }
@@ -518,6 +520,7 @@ async function runFinal() {
   const me = entries.find((e) => e.me)!;
   const table = entries.map((e, i) => `<li class="${e.me ? 'me' : ''} ${i < 3 ? 'top' : ''}"><span>${i + 1}位</span><span>${e.name}</span><b>${e.total}</b></li>`).join('');
   await modal('審査結果', `<div class="judges">${JUDGES.map((j, i) => `<div><small>${j}</small><b>${me.judges[i]}</b></div>`).join('')}</div><ol class="rank">${table}</ol>`, ['…結果は？'], 'tall');
+  S.finalInfo = { year: S.year, score: me.total, rank: myRank, rivals: entries.filter((e) => !e.me).slice(0, 2).map((e) => e.name) };
   if (myRank > 3) {
     await modal('決勝 ' + myRank + '位', `あと一歩、最終決戦に届かなかった…<br><br>${c.tsukkomi.name}「……来年や」`, ['来年こそ']);
     return;
@@ -525,6 +528,22 @@ async function runFinal() {
   S.flags['finalist_' + S.year] = 1;
   const rivals = entries.filter((e) => !e.me).slice(0, 2);
   await modal('最終決戦進出！', `最終決戦に残ったのは――<br><br><b>${rivals[0].name}</b><br><b>${rivals[1].name}</b><br><b>${c.name}</b><br><br>泣いても笑っても、これが最後のネタ！`, ['勝負！']);
+  if (rivals.some((r) => r.name === RIVAL_NAME)) {
+    await playLines('最終決戦　舞台袖', [
+      ['jin', 'やっと、ここで会えたな'],
+      ['T', '……待たせたな'],
+      ['jin', '結成1年目に言うたやろ。決勝で会おか、って'],
+      ['B', '覚えてたんかい'],
+      ['jin', '忘れるかい。……手加減せえへんで'],
+    ]);
+  } else {
+    await playLines('最終決戦　舞台袖', [
+      ['N', '出番直前。舞台袖で、{B}と{T}は目を合わせた。'],
+      ['B', '……{T}、手ぇ震えてるで'],
+      ['T', 'お前もやろ'],
+      ['B', 'ほな、いつも通りいこか'],
+    ]);
+  }
   const last = await runBattle('最終決戦', null, 'last');
   const finals = [
     { name: c.name, t: last, me: true },
@@ -539,14 +558,137 @@ async function runFinal() {
     voteBy.push(finals[w].name);
   }
   const win = votes.indexOf(Math.max(...votes));
-  const body = `<div class="votes">${JUDGES.map((j, i) => `<div><small>${j}</small><b>${voteBy[i]}</b></div>`).join('')}</div>
-    <p>${finals.map((f, i) => `${f.name}：${votes[i]}票`).join('<br>')}</p>`;
-  await modal('最終決戦 審査', body, ['優勝は……']);
+  S.finalInfo.votes = votes[0];
+  await revealFinal(finals, voteBy, win);
   if (finals[win].me) {
     S.champion = true;
   } else {
-    await modal('準優勝', `優勝は <b>${finals[win].name}</b>！<br><br>あと少しだった…。<br>${c.boke.name}「……悔しいなあ」`, ['来年こそ']);
+    const jinWon = finals[win].name === RIVAL_NAME;
+    await playLines('準優勝', [
+      ['N', `優勝は、${finals[win].name}。`],
+      ['B', '……あかんかったか'],
+      ['T', '……'],
+      jinWon ? ['jin', '……悪いな。でも、お前らがおったから、ここまで来れたんや'] : ['minami', 'ええ漫才やったで。胸張り'],
+      ['T', '……来年や。来年、絶対獲る'],
+    ]);
   }
+}
+
+const RIVAL_NAME = '令和モンスター';
+
+function playLines(title: string, lines: [Speaker, string][], music: BgmName = 'story') {
+  return playScene({ id: 'tmp', title, trigger: 'yearStart', cond: () => true, lines }, music);
+}
+
+/** 最終決戦の審査：1人ずつ票を開けて「優勝は……」で溜める */
+function revealFinal(finals: { name: string; me: boolean }[], voteBy: string[], win: number): Promise<void> {
+  stopBgm();
+  return new Promise((res) => {
+    const el = document.createElement('div');
+    el.className = 'reveal';
+    el.innerHTML = `<div class="reveal-inner">
+      <div class="rv-title">最終決戦 審査</div>
+      <div class="rv-judges">${JUDGES.map((j, i) => `<div class="rv-j" data-i="${i}"><small>${j}</small><b>？？？</b></div>`).join('')}</div>
+      <div class="rv-tally">${finals.map((f, i) => `<div class="${f.me ? 'me' : ''}"><span>${f.name}</span><b data-i="${i}">0</b><small>票</small></div>`).join('')}</div>
+      <div class="rv-msg"></div>
+      <button class="btn big rv-next" hidden>つぎへ</button>
+    </div>`;
+    document.body.append(el);
+    const msg = el.querySelector<HTMLElement>('.rv-msg')!;
+    (async () => {
+      await sleep(1400);
+      const tally = finals.map(() => 0);
+      for (let j = 0; j < JUDGES.length; j++) {
+        const row = el.querySelector<HTMLElement>(`.rv-j[data-i="${j}"]`)!;
+        const b = row.querySelector('b')!;
+        row.classList.add('focus');
+        b.textContent = '……';
+        await sleep(j === JUDGES.length - 1 ? 1800 : 900);
+        const wi = finals.findIndex((f) => f.name === voteBy[j]);
+        b.textContent = voteBy[j];
+        row.classList.remove('focus');
+        row.classList.add('open', finals[wi].me ? 'mine' : 'other');
+        tally[wi]++;
+        el.querySelector(`.rv-tally b[data-i="${wi}"]`)!.textContent = String(tally[wi]);
+        se(finals[wi].me ? 'pop' : 'click');
+        await sleep(800);
+      }
+      msg.textContent = '笑王グランプリ、優勝は……';
+      await sleep(2600);
+      msg.innerHTML = `<span class="rv-winner ${finals[win].me ? 'me' : ''}">${finals[win].name}！！</span>`;
+      if (finals[win].me) { se('sparkle'); confetti(); bgm('ending'); } else se('miss');
+      await sleep(1200);
+      const nx = el.querySelector<HTMLButtonElement>('.rv-next')!;
+      nx.hidden = false;
+      nx.addEventListener('click', () => { el.remove(); res(); }, { once: true });
+    })();
+  });
+}
+
+function endingLines(win: boolean): [Speaker, string][] {
+  const metFinal = S.finalInfo?.rivals.includes(RIVAL_NAME);
+  const minamiGone = !!S.flags.story_minami_bye;
+  if (win) {
+    return [
+      ['N', '紙吹雪が舞うステージの真ん中で、{B}と{T}は、しばらく動けなかった。'],
+      ['B', '……え？ 獲った……？ 俺ら、獲ったん？'],
+      ['T', '獲ったんや……{B}、獲ったんや！！'],
+      ['N', '楽屋に戻ると、見慣れた男が待っていた。'],
+      ['jin', metFinal ? '最終決戦で当たって、負けた。……文句なしや' : '……おめでとう。悔しいけど、今年はお前らの年や'],
+      ['jin', '結成1年目のあの日から、ずっとお前らを意識してた。……次はテレビで会おな'],
+      ['N', 'スマホの通知が、鳴り止まない。'],
+      ['shihainin', '劇場の看板、今日から一番上や。……ほんま、よう頑張ったな'],
+      ['minami', minamiGone ? '（メッセージ）テレビの前で泣いてもうた。約束、守ってくれてありがとう' : 'おめでとう！ あんたら、私の自慢の後輩や'],
+      ['haha', 'テレビ見たよ。……ようがんばったね。お父さんも泣いとったよ'],
+      ['B', '{T}。……ありがとうな'],
+      ['T', '礼なんか言うな。……まだ、ここからやろ'],
+      ['N', '結成{Y}年目の冬。{C}は、笑王になった。'],
+    ];
+  }
+  return [
+    ['N', '結成15年目の冬。最後の笑王グランプリが終わった。'],
+    ['T', '……終わったな'],
+    ['B', '終わったなあ'],
+    ['jin', '15年、同じ時代にお前らがおってよかったわ。……ほんまやで'],
+    ['minami', '15年、おつかれさま。あんたらの漫才、ずっと好きやったで'],
+    ['shihainin', '来月も出番入れとくで。笑王がなくても、漫才は続くやろ'],
+    ['B', '{T}。明日もネタ合わせな'],
+    ['T', '……当たり前や'],
+    ['N', '{C}の漫才は、これからも続いていく。'],
+  ];
+}
+
+/** 戦績画像を作って、プレビュー → シェア／保存 */
+async function showRecordCard(rec: GameState, win: boolean) {
+  const url = location.href.split('#')[0].split('?')[0];
+  const c = comboById(rec.comboId);
+  let blob: Blob;
+  try {
+    blob = await makeRecordCard(rec, c, win, url);
+  } catch {
+    await modal('', '画像を作れませんでした…', ['OK']);
+    return;
+  }
+  const file = new File([blob], `shouou-${c.name}.png`, { type: 'image/png' });
+  const src = URL.createObjectURL(blob);
+  const canShare = !!navigator.canShare?.({ files: [file] });
+  const i = await modal('📸 戦績画像', `<img class="card-preview" src="${src}" alt="戦績画像"><p class="note">画像を長押しでも保存できます</p>`,
+    [canShare ? '📤 シェア・画像を保存' : '⬇ 画像をダウンロード', 'とじる'], 'tall');
+  if (i === 0) {
+    if (canShare) {
+      try {
+        await navigator.share({ files: [file], title: 'ドット漫才 戦績', text: `${c.name}で${win ? '笑王グランプリ優勝！' : '15年走りきった！'} #ドット漫才\n${url}` });
+      } catch { /* キャンセル */ }
+    } else {
+      const a = document.createElement('a');
+      a.href = src;
+      a.download = file.name;
+      document.body.append(a);
+      a.click();
+      a.remove();
+    }
+  }
+  setTimeout(() => URL.revokeObjectURL(src), 60000);
 }
 
 // ---------------- エンディング ----------------
@@ -562,6 +704,7 @@ function renderEnding(win: boolean) {
       : `結成15年目、最後の笑王グランプリが終わった。<br>最高成績：<b>${S.bestLabel}</b><br><br>${c.tsukkomi.name}「……でも、楽しかったな」<br>${c.boke.name}「まだ漫才は続くで」`}
       <ul class="hist">${S.history.map((h) => `<li>結成${h.year}年目：${h.result}</li>`).join('')}</ul>
     </div>
+    <button class="btn big gold" id="card">📸 戦績を画像で保存・シェア</button>
     <button class="btn big" id="again">タイトルへ</button>
   </div>`;
   const st = stage(S.comboId, { mic: true, scale: 4 });
@@ -569,7 +712,11 @@ function renderEnding(win: boolean) {
   say(st, 'B', win ? 'ありがとうございましたー！！' : 'ありがとうございました');
   if (win) confetti();
   deleteSlot(slot);
-  app.querySelector('#again')!.addEventListener('click', renderTitle);
+  const done = { ...S };
+  app.querySelector('#card')!.addEventListener('click', () => showRecordCard(done, win));
+  app.querySelector('#again')!.addEventListener('click', async () => {
+    if ((await modal('', 'タイトルに戻りますか？<br><small>戦績画像はこのあと作れなくなります</small>', ['タイトルへ', 'やめる'])) === 0) renderTitle();
+  });
 }
 
 function confetti() {
@@ -582,6 +729,7 @@ function confetti() {
     p.style.animationDelay = `${Math.random() * 2}s`;
     p.style.animationDuration = `${2.5 + Math.random() * 2}s`;
     document.body.append(p);
+    setTimeout(() => p.remove(), 9000);
   }
 }
 
