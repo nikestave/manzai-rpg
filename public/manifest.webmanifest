@@ -1,0 +1,17 @@
+{
+  "name": "ドット漫才 〜目指せ笑王グランプリ〜",
+  "short_name": "ドット漫才",
+  "description": "漫才コンビを育てて笑王グランプリ優勝を目指す育成ゲーム",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1b1430",
+  "theme_color": "#1b1430",
+  "lang": "ja",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
