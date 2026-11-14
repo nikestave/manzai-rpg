@@ -147,11 +147,12 @@ button { font: inherit; color: inherit; }
 /* モーダル */
 .modal-bg {
   position: fixed; inset: 0; background: rgba(10, 6, 20, .72); z-index: 50;
-  display: flex; align-items: center; justify-content: center; padding: 16px;
+  display: flex; align-items: center; justify-content: center;
+  padding: calc(env(safe-area-inset-top) + 20px) 16px calc(env(safe-area-inset-bottom) + 20px);
   animation: fade .15s;
 }
 @keyframes fade { from { opacity: 0; } }
-.modal { width: 100%; max-width: 400px; max-height: 86dvh; display: flex; flex-direction: column; animation: pop .2s; }
+.modal { width: 100%; max-width: 400px; max-height: min(86dvh, 100%); display: flex; flex-direction: column; animation: pop .2s; }
 .modal-title { color: var(--gold); font-size: 17px; margin-bottom: 6px; }
 .modal-body { overflow-y: auto; font-size: 14px; }
 .modal.event .modal-title { color: var(--red); }
@@ -279,7 +280,8 @@ button { font: inherit; color: inherit; }
 .rv-next[hidden] { display: none; }
 .btn.gold { border-color: var(--gold); color: var(--gold); }
 .card-preview { width: 100%; border-radius: 4px; display: block; -webkit-user-select: auto; user-select: auto; -webkit-touch-callout: default; }
-.ending { gap: 10px; }
+.ending { gap: 10px; justify-content: center; padding-top: calc(env(safe-area-inset-top) + 36px); padding-bottom: calc(env(safe-area-inset-bottom) + 24px); }
+.card-preview { max-height: 52dvh; width: auto; max-width: 100%; margin: 0 auto; }
 
 /* コンビ選択：初期ステータスの棒 */
 .cbars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px 6px; margin-top: 4px; }

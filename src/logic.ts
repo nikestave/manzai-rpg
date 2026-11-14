@@ -107,7 +107,7 @@ export const ACTIONS: ActionDef[] = [
   { id: 'awase', name: 'ネタ合わせ', icon: '🎤', cost: 10, gains: { ma: 5, nakama: 2, tsukkomi: 1 }, hint: '間↑ 仲↑ ツッコミ↑' },
   { id: 'bokeT', name: 'ボケ特訓', icon: '🤪', cost: 12, gains: { boke: 6, hana: 1 }, hint: 'ボケ↑ 華↑' },
   { id: 'tsukT', name: 'ツッコミ特訓', icon: '✋', cost: 12, gains: { tsukkomi: 6, ma: 1 }, hint: 'ツッコミ↑ 間↑' },
-  { id: 'gekijo', name: '劇場出番', icon: '🎭', cost: 15, gains: { hana: 3, mental: 3, ma: 2 }, money: 10000, hint: '華↑ メンタル↑ 間↑ ギャラ' },
+  { id: 'gekijo', name: '劇場出番', icon: '🎭', cost: 15, gains: { hana: 3, mental: 3, ma: 2 }, money: 10000, hint: '華↑ メンタル↑ 間↑ 💴' },
   { id: 'baito', name: 'バイト', icon: '🍙', cost: 10, gains: { mental: 1 }, money: 90000, hint: 'お金↑↑ メンタル↑' },
   { id: 'nomi', name: '飲み会', icon: '🍺', cost: -10, gains: { nakama: 4, mental: 2 }, money: -20000, hint: '仲↑ メンタル↑ 体力↑' },
   { id: 'rest', name: '休む', icon: '💤', cost: -40, gains: { nakama: 1 }, hint: '体力↑↑ 仲↑' },

@@ -341,7 +341,13 @@ async function takeTurn(id: ActionId) {
     const lines = [...res.lines, ...payLiving(S)];
     if (res.levelUp) lines.push(`🎉 ${ACTIONS.find((a) => a.id === id)!.name}がLv${res.levelUp}に上がった！`);
     if (res.levelUp || lines.some((l) => l.includes('新ネタ'))) se('piro');
-    await modal(res.title, resultList(lines), ['OK']);
+    // やっぱり別の行動にしたいときは、その場で取り消せる
+    if ((await modal(res.title, resultList(lines), ['OK', '↩ 取り消して選び直す'])) === 1) {
+      S = JSON.parse(snap); // 1つ前の「1手戻る」はそのまま使える
+      save(S);
+      renderHome();
+      return;
+    }
 
     const round = currentRound(S);
     if (!round) await maybeEvent();
