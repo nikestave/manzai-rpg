@@ -10,6 +10,17 @@ export const STAT_LABEL: Record<StatKey, string> = {
   nakama: 'コンビ仲',
 };
 
+/** ステータスの説明（育成画面でタップすると表示） */
+export const STAT_DESC: Record<StatKey, string> = {
+  boke: 'ボケ系カードの点数が上がる',
+  tsukkomi: 'ツッコミ系カードの点数が上がる',
+  neta: '漫才の最初にもらえる「ネタの完成度ボーナス」が増える。あるある・伏線回収カードも強くなる',
+  ma: '間を溜める・ノリツッコミ・畳みかけなど「間」のカードが強くなる。劇場出番の成功率も上がる',
+  hana: '動きのボケ・ツカミのカードが強くなる。劇場出番とテレビオーディションの成功率も上がる',
+  mental: '大舞台での緊張に強くなる。低いと準々決勝以降で「噛む」ことがあり、点数が下がる。高いと「堂々」でボーナス',
+  nakama: '20を切ると解散の危機。コンビ技のカードも強くなる',
+};
+
 export type Stats = Record<StatKey, number>;
 
 export type ActionId = 'neta' | 'awase' | 'bokeT' | 'tsukT' | 'gekijo' | 'baito' | 'nomi' | 'rest';
@@ -47,6 +58,13 @@ export interface Combo {
   ultimate: string;
   ultimateEvent: string;
   homeLines: [speaker: 'B' | 'T', text: string][];
+  /** 関西弁でしゃべるか（false なら標準語） */
+  kansai: boolean;
+  /** 漫才の出だし [ボケ, ツッコミ] と締めのツッコミ */
+  open: [string, string];
+  close: string;
+  /** 選択画面に出す「難しさの理由」 */
+  note: string;
 }
 
 export type CardType = 'boke' | 'tsukkomi' | 'ma' | 'special';

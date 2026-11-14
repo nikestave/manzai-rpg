@@ -1,6 +1,6 @@
 import './style.css';
 import type { ActionId, Card, CardType, GameState } from './types';
-import { STAT_KEYS, STAT_LABEL } from './types';
+import { STAT_DESC, STAT_KEYS, STAT_LABEL } from './types';
 import { COMBOS, JUDGES, RIVALS, comboById } from './data/combos';
 import { CARDS, TYPE_LABEL } from './data/cards';
 import { EVENTS, KAISAN, type GameEvent } from './data/events';
@@ -9,11 +9,12 @@ import {
   newGame, nextRoundInfo, payLiving, pick, rand, rank, recordResult, turnLabel, yearResultLabel, yen,
   addCard,
 } from './logic';
-import { PHASES, cardScore, drawHand, judgeScores, netaBonus, reaction, rivalScore, stars, type BattleCtx } from './battle';
+import { PHASES, PRESSURE, applyNerves, cardScore, drawHand, judgeScores, nerves, netaBonus, reaction, rivalScore, stars, type BattleCtx } from './battle';
+import { cardLines } from './data/voices';
 import { drawMic, drawPerson } from './sprites';
 import { bgm, currentBgm, isSoundOn, se, setSound, stopBgm, unlockOnFirstTouch, type BgmName } from './audio';
 import { makeRecordCard } from './recordCard';
-import { NPC, SCENES, type Scene, type Speaker } from './data/story';
+import { NPC, SCENES, type Scene, type SceneLine, type Speaker } from './data/story';
 
 const app = document.getElementById('app')!;
 let S: GameState;
@@ -98,6 +99,9 @@ function toast(text: string) {
   setTimeout(() => el.remove(), 1800);
 }
 
+/** コンビの方言でセリフを切り替える（関西弁, 標準語） */
+const kv = (kansai: string, std: string) => (comboById(S.comboId).kansai ? kansai : std);
+
 // ---------------- ストーリー ----------------
 function fill(t: string): string {
   const c = comboById(S.comboId);
@@ -133,7 +137,8 @@ function playScene(sc: Scene, music: BgmName = 'story'): Promise<void> {
     const end = () => { el.remove(); if (prevBgm) bgm(prevBgm); res(); };
     const next = () => {
       if (i >= sc.lines.length) return end();
-      const [sp, raw] = sc.lines[i++];
+      const [sp, kan, std] = sc.lines[i++];
+      const raw = std && !comboById(S.comboId).kansai ? std : kan;
       const info = speakerInfo(sp);
       portrait.innerHTML = '';
       if (info.look) portrait.append(drawPerson(info.look, 3));
@@ -217,7 +222,8 @@ function renderSelect() {
         <div class="cname">${c.name}</div>
         <div class="cstyle">${c.style}</div>
         <div class="cdesc">${c.desc}</div>
-        <div class="cmeta"><span class="diff">${c.difficulty}</span> 結成1〜15年目の15回挑戦</div>
+        <div class="cmeta"><span class="diff">${c.difficulty}</span>${c.note}</div>
+        <div class="cbars">${STAT_KEYS.map((k) => `<span><small>${STAT_LABEL[k]}</small><i style="width:${c.stats[k] * 2}%"></i></span>`).join('')}</div>
       </div>`;
     card.querySelector('.sprites')!.append(drawPerson(c.boke.look, 3), drawPerson(c.tsukkomi.look, 3));
     card.addEventListener('click', async () => {
@@ -246,13 +252,14 @@ function renderHome() {
     </div>
     <div class="stage-wrap"></div>
     <div class="win next">${nextRoundInfo(S)}</div>
-    <div class="win stats">
+    <div class="win stats" id="stats" title="タップで説明">
       ${STAT_KEYS.map((k) => `<div class="stat"><span class="lb">${STAT_LABEL[k]}</span>
         <span class="bar"><i style="width:${S.stats[k]}%"></i></span>
         <span class="rk r-${rank(S.stats[k])}">${rank(S.stats[k])}</span><span class="v">${S.stats[k]}</span></div>`).join('')}
       <div class="stat stamina"><span class="lb">体力</span>
         <span class="bar hp ${S.stamina < 30 ? 'low' : ''}"><i style="width:${S.stamina}%"></i></span>
         <span class="v">${S.stamina}</span></div>
+      <div class="stat-help">？ タップでステータスの説明</div>
     </div>
     <div class="actions">
       ${ACTIONS.map((a) => {
@@ -285,6 +292,7 @@ function renderHome() {
     renderHome();
   });
   app.querySelector('#hist')!.addEventListener('click', showHistory);
+  app.querySelector('#stats')!.addEventListener('click', showStatHelp);
   app.querySelector('#title')!.addEventListener('click', async () => {
     if ((await modal('', 'タイトルに戻りますか？<br><small>（今の状態は自動でセーブされています）</small>', ['タイトルへ', 'やめる'])) !== 0) return;
     save(S);
@@ -307,6 +315,12 @@ function showDeck() {
     return `<div class="deck-item t-${cd.type}"><b>${cd.name}</b><span class="tag">${TYPE_LABEL[cd.type]}</span><span class="pw">基礎${cd.base}・${STAT_LABEL[cd.stat]}</span><div class="d">${cd.desc}</div></div>`;
   }).join('');
   modal('📒 ネタ帳', `<div class="deck">${body}</div>`, ['とじる'], 'tall');
+}
+
+function showStatHelp() {
+  const rows = STAT_KEYS.map((k) => `<li><b>${STAT_LABEL[k]}</b>（${rank(S.stats[k])}）<br>${STAT_DESC[k]}</li>`).join('');
+  const acts = ACTIONS.map((a) => `<li>${a.icon} ${a.name}：${a.hint}</li>`).join('');
+  modal('📊 ステータスの効果', `<ul class="stat-desc">${rows}<li><b>体力</b><br>30を切ると練習が失敗しやすくなる。休むで回復</li></ul><div class="modal-sub">行動で上がるもの</div><ul class="stat-desc acts">${acts}</ul>`, ['とじる'], 'tall');
 }
 
 function showHistory() {
@@ -402,7 +416,7 @@ async function yearEnd(): Promise<boolean> {
     renderEnding(false);
     return true;
   }
-  await modal('🎍 年末', `結成${S.year}年目が終わった。<br><br>今年の笑王グランプリ：<b>${label}</b><br><br>${c.boke.name}「来年こそ、獲ったろな」<br>${c.tsukkomi.name}「せやな」<br><br><small>体力が全回復した。出場できるのはあと${LAST_YEAR - S.year}回。</small>`, ['結成' + (S.year + 1) + '年目へ']);
+  await modal('🎍 年末', `結成${S.year}年目が終わった。<br><br>今年の笑王グランプリ：<b>${label}</b><br><br>${c.boke.name}「${kv('来年こそ、獲ったろな', '来年こそ、獲ろうな')}」<br>${c.tsukkomi.name}「${kv('せやな', 'ああ')}」<br><br><small>体力が全回復した。出場できるのはあと${LAST_YEAR - S.year}回。</small>`, ['結成' + (S.year + 1) + '年目へ']);
   S.year++;
   S.turn = 0;
   S.round = 0;
@@ -445,14 +459,23 @@ async function runBattle(title: string, th: number | null, mode: 'prelim' | 'fin
     if (th && v >= th) gaugeEl.classList.add('pass');
   };
 
-  say(st, 'B', 'どうもー！');
-  await sleep(500);
-  say(st, 'T', `${comboById(S.comboId).name}です！ お願いしますー！`);
+  const combo = comboById(S.comboId);
+  say(st, 'B', fill(combo.open[0]));
+  await sleep(600);
+  say(st, 'T', fill(combo.open[1]));
   total = netaBonus(S);
   await sleep(300);
   setGauge(total);
   hand.innerHTML = `<div class="info">ネタの完成度ボーナス +${total.toFixed(1)}</div>`;
   await sleep(700);
+  // メンタル：大舞台ほど緊張する
+  const ri = ROUNDS.findIndex((r) => r.name === title);
+  const pressure = mode === 'prelim' ? PRESSURE.prelim[Math.max(0, ri)] : PRESSURE[mode];
+  const nv = nerves(S.stats.mental, pressure);
+  if (nv.calm || nv.miss > 0) {
+    hand.innerHTML = `<div class="info">緊張度：<b class="${nv.calm ? 'calm' : 'nerve'}">${nv.label}</b>${nv.miss > 0 ? `<br><small>噛む確率 ${nv.miss}%（メンタルで下がる）</small>` : ''}</div>`;
+    await sleep(1300);
+  }
 
   const ctx: BattleCtx = { phase: 0, bokeCount: 0, tame: false, gauge: total };
   const deck = [...S.deck];
@@ -463,9 +486,11 @@ async function runBattle(title: string, th: number | null, mode: 'prelim' | 'fin
     const cards = drawHand(deck);
     const chosen = await chooseCard(hand, cards, ctx);
     const { score, tags } = cardScore(chosen, ctx, S);
-    const final = score * rand(0.88, 1.12);
-    hand.innerHTML = `<div class="info">「${chosen.name}」${tags.map((t) => `<span class="tg">${t}</span>`).join('')}</div>`;
-    for (const [sp, tx] of pick(chosen.lines)) {
+    const nr = applyNerves(score, nv);
+    if (nr.tag) tags.push(nr.tag);
+    const final = nr.score * rand(0.88, 1.12);
+    hand.innerHTML = `<div class="info">「${chosen.name}」${tags.map((t) => `<span class="tg ${t === '噛んだ…' ? 'bad' : ''}">${t}</span>`).join('')}</div>`;
+    for (const [sp, tx] of pick(cardLines(chosen.id, S.comboId))) {
       say(st, sp, tx);
       await sleep(Math.min(1500, 650 + tx.length * 25));
     }
@@ -484,7 +509,7 @@ async function runBattle(title: string, th: number | null, mode: 'prelim' | 'fin
     if (chosen.type === 'boke') ctx.bokeCount++;
     ctx.prevType = chosen.type as CardType;
   }
-  say(st, 'T', 'もうええわ！ どうも、ありがとうございましたー！');
+  say(st, 'T', combo.close);
   await sleep(1000);
   return total;
 }
@@ -522,7 +547,7 @@ async function runFinal() {
   await modal('審査結果', `<div class="judges">${JUDGES.map((j, i) => `<div><small>${j}</small><b>${me.judges[i]}</b></div>`).join('')}</div><ol class="rank">${table}</ol>`, ['…結果は？'], 'tall');
   S.finalInfo = { year: S.year, score: me.total, rank: myRank, rivals: entries.filter((e) => !e.me).slice(0, 2).map((e) => e.name) };
   if (myRank > 3) {
-    await modal('決勝 ' + myRank + '位', `あと一歩、最終決戦に届かなかった…<br><br>${c.tsukkomi.name}「……来年や」`, ['来年こそ']);
+    await modal('決勝 ' + myRank + '位', `あと一歩、最終決戦に届かなかった…<br><br>${c.tsukkomi.name}「${kv('……来年や', '……来年だ')}」`, ['来年こそ']);
     return;
   }
   S.flags['finalist_' + S.year] = 1;
@@ -533,15 +558,15 @@ async function runFinal() {
       ['jin', 'やっと、ここで会えたな'],
       ['T', '……待たせたな'],
       ['jin', '結成1年目に言うたやろ。決勝で会おか、って'],
-      ['B', '覚えてたんかい'],
+      ['B', '覚えてたんかい', '覚えてたのかよ'],
       ['jin', '忘れるかい。……手加減せえへんで'],
     ]);
   } else {
     await playLines('最終決戦　舞台袖', [
       ['N', '出番直前。舞台袖で、{B}と{T}は目を合わせた。'],
-      ['B', '……{T}、手ぇ震えてるで'],
-      ['T', 'お前もやろ'],
-      ['B', 'ほな、いつも通りいこか'],
+      ['B', '……{T}、手ぇ震えてるで', '……{T}、手、震えてるぞ'],
+      ['T', 'お前もやろ', 'お前もだろ'],
+      ['B', 'ほな、いつも通りいこか', 'じゃあ、いつも通りいこう'],
     ]);
   }
   const last = await runBattle('最終決戦', null, 'last');
@@ -566,17 +591,17 @@ async function runFinal() {
     const jinWon = finals[win].name === RIVAL_NAME;
     await playLines('準優勝', [
       ['N', `優勝は、${finals[win].name}。`],
-      ['B', '……あかんかったか'],
+      ['B', '……あかんかったか', '……ダメだったか'],
       ['T', '……'],
       jinWon ? ['jin', '……悪いな。でも、お前らがおったから、ここまで来れたんや'] : ['minami', 'ええ漫才やったで。胸張り'],
-      ['T', '……来年や。来年、絶対獲る'],
+      ['T', '……来年や。来年、絶対獲る', '……来年だ。来年、絶対獲る'],
     ]);
   }
 }
 
 const RIVAL_NAME = '令和モンスター';
 
-function playLines(title: string, lines: [Speaker, string][], music: BgmName = 'story') {
+function playLines(title: string, lines: SceneLine[], music: BgmName = 'story') {
   return playScene({ id: 'tmp', title, trigger: 'yearStart', cond: () => true, lines }, music);
 }
 
@@ -625,14 +650,14 @@ function revealFinal(finals: { name: string; me: boolean }[], voteBy: string[], 
   });
 }
 
-function endingLines(win: boolean): [Speaker, string][] {
+function endingLines(win: boolean): SceneLine[] {
   const metFinal = S.finalInfo?.rivals.includes(RIVAL_NAME);
   const minamiGone = !!S.flags.story_minami_bye;
   if (win) {
     return [
       ['N', '紙吹雪が舞うステージの真ん中で、{B}と{T}は、しばらく動けなかった。'],
-      ['B', '……え？ 獲った……？ 俺ら、獲ったん？'],
-      ['T', '獲ったんや……{B}、獲ったんや！！'],
+      ['B', '……え？ 獲った……？ 俺ら、獲ったん？', '……え？ 獲った……？ 俺ら、獲ったの？'],
+      ['T', '獲ったんや……{B}、獲ったんや！！', '獲ったんだよ……{B}、獲ったんだよ！！'],
       ['N', '楽屋に戻ると、見慣れた男が待っていた。'],
       ['jin', metFinal ? '最終決戦で当たって、負けた。……文句なしや' : '……おめでとう。悔しいけど、今年はお前らの年や'],
       ['jin', '結成1年目のあの日から、ずっとお前らを意識してた。……次はテレビで会おな'],
@@ -641,7 +666,7 @@ function endingLines(win: boolean): [Speaker, string][] {
       ['minami', minamiGone ? '（メッセージ）テレビの前で泣いてもうた。約束、守ってくれてありがとう' : 'おめでとう！ あんたら、私の自慢の後輩や'],
       ['haha', 'テレビ見たよ。……ようがんばったね。お父さんも泣いとったよ'],
       ['B', '{T}。……ありがとうな'],
-      ['T', '礼なんか言うな。……まだ、ここからやろ'],
+      ['T', '礼なんか言うな。……まだ、ここからやろ', '礼なんか言うな。……まだ、ここからだろ'],
       ['N', '結成{Y}年目の冬。{C}は、笑王になった。'],
     ];
   }
@@ -652,8 +677,8 @@ function endingLines(win: boolean): [Speaker, string][] {
     ['jin', '15年、同じ時代にお前らがおってよかったわ。……ほんまやで'],
     ['minami', '15年、おつかれさま。あんたらの漫才、ずっと好きやったで'],
     ['shihainin', '来月も出番入れとくで。笑王がなくても、漫才は続くやろ'],
-    ['B', '{T}。明日もネタ合わせな'],
-    ['T', '……当たり前や'],
+    ['B', '{T}。明日もネタ合わせな', '{T}。明日もネタ合わせ、やるぞ'],
+    ['T', '……当たり前や', '……当たり前だろ'],
     ['N', '{C}の漫才は、これからも続いていく。'],
   ];
 }
@@ -700,8 +725,8 @@ function renderEnding(win: boolean) {
     <div class="logo"><h1>${win ? '🏆 笑王 🏆' : 'ラストイヤー終了'}</h1></div>
     <div class="stage-wrap"></div>
     <div class="win msg">${win
-      ? `<b>${c.name}</b>、結成${S.year}年目にして<br>笑王グランプリ優勝！！<br><br>${c.boke.name}「獲った……ほんまに獲った！」<br>${c.tsukkomi.name}「……泣くな、アホ」`
-      : `結成15年目、最後の笑王グランプリが終わった。<br>最高成績：<b>${S.bestLabel}</b><br><br>${c.tsukkomi.name}「……でも、楽しかったな」<br>${c.boke.name}「まだ漫才は続くで」`}
+      ? `<b>${c.name}</b>、結成${S.year}年目にして<br>笑王グランプリ優勝！！<br><br>${c.boke.name}「${kv('獲った……ほんまに獲った！', '獲った……本当に獲った！')}」<br>${c.tsukkomi.name}「${kv('……泣くな、アホ', '……泣くなよ、バカ')}」`
+      : `結成15年目、最後の笑王グランプリが終わった。<br>最高成績：<b>${S.bestLabel}</b><br><br>${c.tsukkomi.name}「……でも、楽しかったな」<br>${c.boke.name}「${kv('まだ漫才は続くで', 'まだ漫才は続くよ')}」`}
       <ul class="hist">${S.history.map((h) => `<li>結成${h.year}年目：${h.result}</li>`).join('')}</ul>
     </div>
     <button class="btn big gold" id="card">📸 戦績を画像で保存・シェア</button>

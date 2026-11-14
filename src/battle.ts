@@ -59,3 +59,29 @@ export const rivalScore = (power: number) => power + rand(-10, 10);
 export function judgeScores(total: number): number[] {
   return Array.from({ length: 5 }, () => clamp(Math.round(62 + total * 0.22 + rand(-3, 3)), 60, 99));
 }
+
+/** 舞台の大きさごとの「緊張の強さ」（予選は ROUNDS の順、決勝・最終決戦） */
+export const PRESSURE = { prelim: [10, 20, 30, 45, 55], final: 65, last: 75 };
+
+export interface Nerves {
+  /** 1枚ごとに噛む確率（%） */
+  miss: number;
+  /** メンタルに余裕があると「堂々」で少し加点 */
+  calm: boolean;
+  label: string;
+}
+
+/** メンタルと舞台の大きさから緊張度を決める */
+export function nerves(mental: number, pressure: number): Nerves {
+  const miss = clamp(Math.round((pressure - mental) * 1.5), 0, 45);
+  const calm = mental >= pressure + 15;
+  const label = calm ? '堂々（メンタル◎）' : miss <= 0 ? '平常心' : miss < 15 ? 'ドキドキ' : miss < 30 ? '緊張している' : 'ガチガチ…';
+  return { miss, calm, label };
+}
+
+/** 緊張の判定をカードの点数にかける */
+export function applyNerves(score: number, n: Nerves): { score: number; tag?: string } {
+  if (Math.random() * 100 < n.miss) return { score: score * 0.6, tag: '噛んだ…' };
+  if (n.calm) return { score: score * 1.08, tag: '堂々' };
+  return { score };
+}

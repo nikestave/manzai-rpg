@@ -156,7 +156,7 @@ export const EVENTS: GameEvent[] = [
 /** 条件付きの強制イベント */
 export const KAISAN: GameEvent = {
   id: 'kaisan', title: '⚠ 解散の危機',
-  text: (_s, c) => `${c.tsukkomi.name}「……なあ、もう解散せえへんか」\n\nコンビ仲が限界だ。`,
+  text: (_s, c) => `${c.tsukkomi.name}「……なあ、もう${c.kansai ? '解散せえへんか' : '解散しないか'}」\n\nコンビ仲が限界だ。`,
   choices: [
     { label: 'とことん話し合う', apply: (s) => ['なんとか踏みとどまった', gain(s, 'nakama', 15, false), addStamina(s, -10)] },
     { label: '少し距離を置く', apply: (s) => [gain(s, 'nakama', 6, false), gain(s, 'mental', -5, false)] },

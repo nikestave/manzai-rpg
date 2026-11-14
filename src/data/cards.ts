@@ -19,7 +19,7 @@ const list: Card[] = [
     ],
   },
   {
-    id: 'tsuk_basic', name: 'なんでやねん', type: 'tsukkomi', base: 9, stat: 'tsukkomi',
+    id: 'tsuk_basic', name: '決めツッコミ', type: 'tsukkomi', base: 9, stat: 'tsukkomi',
     desc: '基本のツッコミ。ボケのあとに出すとコンボ',
     lines: [
       [['B', 'ほな、ワシがお母さん役やるわ'], ['T', 'なんでやねん！']],
